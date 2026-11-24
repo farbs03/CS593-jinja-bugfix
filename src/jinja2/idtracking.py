@@ -137,6 +137,15 @@ class Symbols:
             target = self.find_ref(name)
             assert target is not None, "should not happen"
 
+            # If every branch assigns the name without reading it first, the
+            # value never comes from outside the branches, so keep it undefined.
+            if all(
+                name in branch.stores
+                and branch.loads.get(target) == (VAR_LOAD_UNDEFINED, None)
+                for branch in branch_symbols
+            ):
+                continue
+
             if self.parent is not None:
                 outer_target = self.parent.find_ref(name)
                 if outer_target is not None:
@@ -262,10 +271,14 @@ class FrameSymbolVisitor(NodeVisitor):
             self.symbols = original_symbols
             return rv
 
-        body_symbols = inner_visit(node.body)
-        elif_symbols = inner_visit(node.elif_)
-        else_symbols = inner_visit(node.else_ or ())
-        self.symbols.branch_update([body_symbols, elif_symbols, else_symbols])
+        # Each elif is a separate branch, and a missing else is an empty one.
+        branch_symbols = [inner_visit(node.body)]
+
+        for elif_ in node.elif_:
+            branch_symbols.append(inner_visit([elif_.test, *elif_.body]))
+
+        branch_symbols.append(inner_visit(node.else_ or ()))
+        self.symbols.branch_update(branch_symbols)
 
     def visit_Macro(self, node: nodes.Macro, **kwargs: t.Any) -> None:
         self.symbols.store(node.name)
