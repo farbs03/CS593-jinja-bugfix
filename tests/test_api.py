@@ -215,6 +215,111 @@ class TestMeta:
         x = meta.find_undeclared_variables(ast)
         assert x == {"a", "b"}
 
+    @pytest.mark.parametrize(
+        ("source", "expect"),
+        [
+            pytest.param(
+                "{% if c %}{% set out = 1 %}{% endif %}{{ out }}",
+                {"c", "out"},
+                id="if_no_else",
+            ),
+            pytest.param(
+                "{% if c %}{% set out = 1 %}{% else %}text{% endif %}{{ out }}",
+                {"c", "out"},
+                id="else_does_not_set",
+            ),
+            pytest.param(
+                "{% if c == 1 %}{% set out = 1 %}{% elif c == 2 %}text"
+                "{% else %}{% set out = 3 %}{% endif %}{{ out }}",
+                {"c", "out"},
+                id="elif_does_not_set",
+            ),
+            pytest.param(
+                "{% if a %}{% set out = 1 %}{% elif b %}{% set out = 2 %}"
+                "{% elif c %}text{% else %}{% set out = 3 %}{% endif %}{{ out }}",
+                {"a", "b", "c", "out"},
+                id="second_elif_does_not_set",
+            ),
+            pytest.param(
+                "{% if a %}{% set out = 1 %}{% elif b %}{% set out = 2 %}{% endif %}"
+                "{{ out }}",
+                {"a", "b", "out"},
+                id="all_elifs_no_else",
+            ),
+            pytest.param(
+                "{% if a %}{% set out = 1 %}{% elif b %}{% set out = 2 %}"
+                "{% elif c %}{% set out = 3 %}{% else %}{% set out = 4 %}{% endif %}"
+                "{{ out }}",
+                {"a", "b", "c"},
+                id="all_elifs_and_else",
+            ),
+            pytest.param(
+                "{% if c %}{{ out }}{% set out = 1 %}{% else %}{% set out = 2 %}"
+                "{% endif %}{{ out }}",
+                {"c", "out"},
+                id="read_before_set_in_branch",
+            ),
+            pytest.param(
+                "{{ out }}{% if c %}{% set out = 1 %}{% else %}{% set out = 2 %}"
+                "{% endif %}{{ out }}",
+                {"c", "out"},
+                id="read_before_if",
+            ),
+            pytest.param(
+                "{% if a %}{% if b %}{% set out = 1 %}{% endif %}"
+                "{% else %}{% set out = 2 %}{% endif %}{{ out }}",
+                {"a", "b", "out"},
+                id="nested_incomplete",
+            ),
+            pytest.param(
+                "{% if a %}{% set x = 1 %}{% elif x %}{% set x = 2 %}"
+                "{% else %}{% set x = 3 %}{% endif %}{{ x }}",
+                {"a", "x"},
+                id="elif_test_reads_name",
+            ),
+            pytest.param(
+                "{% set out = 0 %}{% if c %}{% set out = 1 %}"
+                "{% else %}{% set out = 2 %}{% endif %}{{ out }}",
+                {"c"},
+                id="set_before_if",
+            ),
+            pytest.param(
+                "{% if c %}{% set a, b = 1, 2 %}{% else %}{% set a, b = 3, 4 %}"
+                "{% endif %}{{ a }}{{ b }}",
+                {"c"},
+                id="tuple_assign",
+            ),
+            pytest.param(
+                "{% if c %}{% set out %}1{% endset %}"
+                "{% else %}{% set out %}2{% endset %}{% endif %}{{ out }}",
+                {"c"},
+                id="block_set",
+            ),
+            pytest.param(
+                "{% if c %}{% import 'a.html' as m %}"
+                "{% else %}{% import 'b.html' as m %}{% endif %}{{ m }}",
+                {"c"},
+                id="import_in_all_branches",
+            ),
+            pytest.param(
+                "{% for i in seq %}{% if i %}{% set out = 1 %}"
+                "{% else %}{% set out = 2 %}{% endif %}{{ out }}{% endfor %}",
+                {"seq"},
+                id="inside_for",
+            ),
+            pytest.param(
+                "{% macro m() %}{% if c %}{% set out = 1 %}"
+                "{% else %}{% set out = 2 %}{% endif %}{{ out }}{% endmacro %}",
+                {"c"},
+                id="inside_macro",
+            ),
+        ],
+    )
+    def test_find_undeclared_variables_if_branches(self, env, source, expect):
+        ast = env.parse(source)
+        x = meta.find_undeclared_variables(ast)
+        assert x == expect
+
     def test_find_refererenced_templates(self, env):
         ast = env.parse('{% extends "layout.html" %}{% include helper %}')
         i = meta.find_referenced_templates(ast)

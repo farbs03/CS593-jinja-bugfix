@@ -2,6 +2,7 @@ import pytest
 
 from jinja2 import DictLoader
 from jinja2 import Environment
+from jinja2 import StrictUndefined
 from jinja2 import TemplateRuntimeError
 from jinja2 import TemplateSyntaxError
 from jinja2 import UndefinedError
@@ -336,6 +337,59 @@ class TestIfCondition:
         assert tmpl.render(a=True) == "1"
         tmpl = env.from_string("{% if true %}{% set foo = 1 %}{% endif %}{{ foo }}")
         assert tmpl.render() == "1"
+
+    def test_set_in_all_branches(self, env):
+        tmpl = env.from_string(
+            "{% if c %}{% set out = 1 %}{% else %}{% set out = 2 %}{% endif %}{{ out }}"
+        )
+        assert tmpl.render(c=True, out="ctx") == "1"
+        assert tmpl.render(c=False, out="ctx") == "2"
+
+    def test_set_in_some_branches(self, env):
+        tmpl = env.from_string(
+            "{% if c %}{% set out = 1 %}{% else %}x{% endif %}{{ out }}"
+        )
+        assert tmpl.render(c=True, out="ctx") == "1"
+        assert tmpl.render(c=False, out="ctx") == "xctx"
+
+    def test_set_in_some_elif_branches(self, env):
+        tmpl = env.from_string(
+            "{% if a %}{% set out = 1 %}{% elif b %}{% set out = 2 %}"
+            "{% elif c %}{% else %}{% set out = 3 %}{% endif %}{{ out }}"
+        )
+        assert tmpl.render(a=False, b=False, c=True, out="ctx") == "ctx"
+        assert tmpl.render(a=False, b=True, out="ctx") == "2"
+
+    def test_elif_test_reads_name_set_in_branches(self, env):
+        tmpl = env.from_string(
+            "{% if a %}{% set x = 1 %}{% elif x %}{% set x = 2 %}"
+            "{% else %}{% set x = 3 %}{% endif %}{{ x }}"
+        )
+        assert tmpl.render(a=True) == "1"
+        assert tmpl.render(a=False, x=True) == "2"
+        assert tmpl.render(a=False) == "3"
+
+    def test_read_before_set_in_branch(self, env):
+        tmpl = env.from_string(
+            "{% if c %}{{ out }}{% set out = 1 %}{% else %}{% set out = 2 %}"
+            "{% endif %}{{ out }}"
+        )
+        assert tmpl.render(c=True, out="ctx") == "ctx1"
+        assert tmpl.render(c=False) == "2"
+
+    def test_set_in_all_branches_in_loop(self, env):
+        tmpl = env.from_string(
+            "{% for i in [1, 0] %}{% if i %}{% set out = 'a' %}"
+            "{% else %}{% set out = 'b' %}{% endif %}{{ out }}{% endfor %}"
+        )
+        assert tmpl.render() == "ab"
+
+    def test_set_in_all_branches_strict_undefined(self):
+        env = Environment(undefined=StrictUndefined)
+        tmpl = env.from_string(
+            "{% if c %}{% set out = 1 %}{% else %}{% set out = 2 %}{% endif %}{{ out }}"
+        )
+        assert tmpl.render(c=False) == "2"
 
 
 class TestMacros:
